@@ -223,6 +223,54 @@ def get_bot_response(message, session_data):
             }
         else:
             return {'message': "Sorry, I couldn't retrieve the processed data."}
+        
+
+       # Explain the dataset with statistical summary
+    if 'explain' in message_lower and ('data' in message_lower or 'dataset' in message_lower):
+        stats = session_data.get('stats')
+        if stats:
+            message = f"Here's an overview of your dataset:\n\n"
+            message += f"- Total rows: {stats['rows']}\n"
+            message += f"- Total columns: {stats['columns']}\n"
+            message += f"- Column names: {', '.join(stats['column_names'][:5])}"
+            if len(stats['column_names']) > 5:
+                message += "..."
+            message += "\n"
+
+            if stats['numeric_columns']:
+                message += f"- Numeric columns: {', '.join(stats['numeric_columns'][:5])}"
+                if len(stats['numeric_columns']) > 5:
+                    message += "..."
+                message += "\n"
+
+            if stats['categorical_columns']:
+                message += f"- Categorical columns: {', '.join(stats['categorical_columns'][:5])}"
+                if len(stats['categorical_columns']) > 5:
+                    message += "..."
+                message += "\n"
+
+            if any(stats['missing_values'].values()):
+                missing = [f"{k}: {v}" for k, v in stats['missing_values'].items() if v > 0]
+                message += f"- Missing values in: {', '.join(missing[:3])}"
+                if len(missing) > 3:
+                    message += "..."
+                message += "\n"
+            else:
+                message += "- No missing values detected.\n"
+
+        # Convert summary to DataFrame and return as text
+            try:
+                summary_df = pd.DataFrame(stats['summary'])
+                describe_text = summary_df.to_string()
+                return {
+                    'message': message + "\nHere’s the statistical summary of numeric columns:",
+                    'rawData': describe_text
+            }
+            except Exception as e:
+                return {'message': message + "\nSummary data could not be formatted."}
+        else:
+            return {'message': "Sorry, I couldn't retrieve stats from your data."}
+    
 
     # Tell me about my data
     if 'tell' in message_lower and 'data' in message_lower:
@@ -337,7 +385,7 @@ def chat():
         response = {
             'message': "Please upload a CSV file first so I can analyze it."
         }
-    
+    response['session_id'] = session_id  # ✅ attach the session_id again
     return jsonify(response)
 
 @app.route('/visualizations/<session_id>/<filename>')
