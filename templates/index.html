@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nimbus AI-PSS Version</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <span class="logo-icon">☁️</span>
+                <h1>Nimbus AI-PSS</h1>
+                <span class="version">v1.0</span>
+            </div>
+        </header>
+        
+        <div class="chat-container">
+            <div class="chat-messages" id="chat-messages">
+                <div class="message bot">
+                    <div class="message-content">
+                        <p>Hello! I'm Nimbus AI-PSS. I can analyze CSV data, perform Solter smoothing, and create visualizations. Upload a CSV file to get started!</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="file-upload-container" id="file-upload-container">
+                <form id="upload-form" enctype="multipart/form-data">
+                    <label for="file-upload" class="custom-file-upload">
+                        <span class="upload-icon">📁</span> Choose CSV File
+                    </label>
+                    <input id="file-upload" type="file" name="file" accept=".csv">
+                    <button type="submit" id="upload-button">Upload & Analyze</button>
+                </form>
+            </div>
+            
+            <div class="visualization-container" id="visualization-container" style="display: none;">
+                <h3>Data Visualization</h3>
+                <div class="visualization-content" id="visualization-content">
+                    <!-- Visualization will be inserted here -->
+                </div>
+                <div class="controls">
+                    <button id="download-btn">Download Plot</button>
+                    <button id="toggle-raw-data">Show Raw Data</button>
+                </div>
+            </div>
+            
+            <div class="raw-data-container" id="raw-data-container" style="display: none;">
+                <h3>Raw & Processed Data</h3>
+                <div class="raw-data-content" id="raw-data-content">
+                    <!-- Raw data will be inserted here -->
+                </div>
+            </div>
+            
+            <div class="chat-input-container">
+                <div class="input-wrapper">
+                    <input type="text" id="user-input" placeholder="Ask something about your data...">
+                    <button id="send-button">
+                        <span class="send-icon">➤</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>Nimbus AI-PSS Version • Solter Smoother • JFree Plotting</p>
+        </footer>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
