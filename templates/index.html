@@ -5,15 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nimbus AI-PSS Version</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='logo.png') }}">
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 </head>
 <body>
     <div class="container">
         <header>
             <div class="logo">
-                <span class="logo-icon">☁️</span>
-                <h1>Nimbus AI-PSS</h1>
-                <span class="version">v1.0</span>
+                <span class="logo-icon"><img src="{{ url_for('static', filename='logo.png') }}" alt="Nimbus Logo" id="lo"></span>
+                <h1 id="nameNim">Nimbus : Singularity</h1>
+                <span class="version">PSS-v1.0</span>
             </div>
         </header>
         
@@ -71,7 +73,7 @@
         </div>
         
         <footer>
-            <p>Nimbus AI-PSS Version • Solter Smoother • JFree Plotting</p>
+            <p>Nimbus : Singluarity -PSS Version 0.1 • Solter Smoother • JFree Plotting <br> © Copyright,2025: All right reserved to Arnab Das Utsa</p>
         </footer>
     </div>
     
