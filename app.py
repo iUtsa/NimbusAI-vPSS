@@ -117,30 +117,53 @@ def analyze_csv(file_path):
 def get_bot_response(message, session_data):
     """Generate a response from the chatbot based on user message and session data"""
     message_lower = message.lower()
-    
-    # Check if file is processed
+
     if not session_data.get('file_processed'):
         return {
             'message': "Please upload a CSV file first so I can analyze it."
         }
-    
+
     # Help message
     if 'help' in message_lower or 'what can you do' in message_lower:
         return {
             'message': "I can help you analyze CSV data using our Plot-Salt-Smooth-Graph pipeline. Here's what you can ask me:\n\n"
-                      "- 'Show me the initial plot' - Display the original data visualization\n"
-                      "- 'Show me the salted plot' - Display the data after salting\n"
-                      "- 'Show me the smoothed plot' - Display the data after smoothing\n"
-                      "- 'Show me the final graph' - Display all data series together\n"
-                      "- 'Show raw data' - Display the original data\n"
-                      "- 'Show processed data' - Display all processed data stages\n"
-                      "- 'Explain the pipeline' - Learn about our processing steps\n"
-                      "- 'Download visualization' - Get the plot images\n"
-                      "- 'Tell me about my data' - Get basic statistics"
+                       "- 'Show me the initial plot' - Display the original data visualization\n"
+                       "- 'Show me the salted plot' - Display the data after salting\n"
+                       "- 'Show me the smoothed plot' - Display the data after smoothing\n"
+                       "- 'Show me the final graph' - Display all data series together\n"
+                       "- 'Show raw data' - Display the original data\n"
+                       "- 'Show processed data' - Display all processed data stages\n"
+                       "- 'Explain the pipeline' - Learn about our processing steps\n"
+                       "- 'Download visualization' - Get the plot images\n"
+                       "- 'Tell me about my data' - Get basic statistics"
         }
-    
+
+    # Explain salting
+    if 'explain' in message_lower and 'salt' in message_lower:
+        return {
+            'message': "The salting procedure adds controlled variability to your data to highlight certain patterns "
+                       "that might be obscured in the original data. It works by:\n\n"
+                       "1. Analyzing your data to detect trends or cycles\n"
+                       "2. Applying different salting methods based on data characteristics\n"
+                       "3. For trend data, enhancing the trend with systematic pattern\n"
+                       "4. For cyclic data, enhancing the cycles with periodic components\n"
+                       "5. For random data, adding controlled random variations\n\n"
+                       "This process often makes certain features more visible when the smoothing algorithm is applied."
+        }
+
+    # Explain smoothing
+    if 'explain' in message_lower and 'smooth' in message_lower:
+        return {
+            'message': "The Solter smoothing algorithm reduces noise in your data while preserving important patterns. It works by:\n\n"
+                       "1. Using a sliding window approach to examine points around each data point\n"
+                       "2. Calculating a weighted average based on distance from the center point\n"
+                       "3. Applying exponential decay to weights (points further away have less influence)\n"
+                       "4. Using adaptive parameters based on local data characteristics\n\n"
+                       "This results in smoother data with reduced random fluctuations but preserved significant features."
+        }
+
     # Show initial plot
-    if 'initial plot' in message_lower or 'original plot' in message_lower:
+    if 'initial' in message_lower and ('plot' in message_lower or 'show' in message_lower):
         return {
             'message': "Here's the initial plot of your raw data:",
             'visualization': {
@@ -148,9 +171,9 @@ def get_bot_response(message, session_data):
                 'url': f"/visualizations/{session_data['session_id']}/initial_plot.png"
             }
         }
-    
+
     # Show salted plot
-    if 'salted plot' in message_lower or 'salt' in message_lower:
+    if 'salted' in message_lower and ('plot' in message_lower or 'show' in message_lower):
         return {
             'message': "Here's the plot after applying the salting procedure:",
             'visualization': {
@@ -158,9 +181,9 @@ def get_bot_response(message, session_data):
                 'url': f"/visualizations/{session_data['session_id']}/salted_plot.png"
             }
         }
-    
+
     # Show smoothed plot
-    if 'smoothed plot' in message_lower or 'smooth' in message_lower:
+    if 'smoothed' in message_lower and ('plot' in message_lower or 'show' in message_lower):
         return {
             'message': "Here's the plot after applying the smoothing algorithm:",
             'visualization': {
@@ -168,7 +191,7 @@ def get_bot_response(message, session_data):
                 'url': f"/visualizations/{session_data['session_id']}/smoothed_plot.png"
             }
         }
-    
+
     # Show final graph
     if 'final' in message_lower or ('all' in message_lower and 'plot' in message_lower) or 'graph' in message_lower:
         return {
@@ -178,7 +201,7 @@ def get_bot_response(message, session_data):
                 'url': f"/visualizations/{session_data['session_id']}/final_plot.png"
             }
         }
-    
+
     # Show raw data
     if 'raw data' in message_lower or 'original data' in message_lower:
         df = session_data.get('original_data')
@@ -189,7 +212,7 @@ def get_bot_response(message, session_data):
             }
         else:
             return {'message': "Sorry, I couldn't retrieve the original data."}
-    
+
     # Show processed data
     if 'processed data' in message_lower:
         df = session_data.get('processed_data')
@@ -200,65 +223,30 @@ def get_bot_response(message, session_data):
             }
         else:
             return {'message': "Sorry, I couldn't retrieve the processed data."}
-    
-    # Explain pipeline
-    if 'explain' in message_lower and ('pipeline' in message_lower or 'process' in message_lower):
-        return {
-            'message': "Our system processes your data in 4 sequential steps:\n\n"
-                      "1. PLOT: We create an initial visualization of your raw data\n"
-                      "2. SALT: We apply a 'salting' procedure that adds controlled variability to highlight patterns\n"
-                      "3. SMOOTH: We apply the Solter smoothing algorithm to reduce noise\n"
-                      "4. GRAPH: We create a final visualization showing all data series for comparison\n\n"
-                      "Each step builds on the previous one, allowing you to see how the transformations affect your data."
-        }
-    
-    # Explain salting
-    if 'explain' in message_lower and 'salt' in message_lower:
-        return {
-            'message': "The salting procedure adds controlled variability to your data to highlight certain patterns "
-                      "that might be obscured in the original data. It works by:\n\n"
-                      "1. Analyzing your data to detect trends or cycles\n"
-                      "2. Applying different salting methods based on data characteristics\n"
-                      "3. For trend data, enhancing the trend with systematic pattern\n"
-                      "4. For cyclic data, enhancing the cycles with periodic components\n"
-                      "5. For random data, adding controlled random variations\n\n"
-                      "This process often makes certain features more visible when the smoothing algorithm is applied."
-        }
-    
-    # Explain smoothing
-    if 'explain' in message_lower and 'smooth' in message_lower:
-        return {
-            'message': "The Solter smoothing algorithm reduces noise in your data while preserving important patterns. It works by:\n\n"
-                      "1. Using a sliding window approach to examine points around each data point\n"
-                      "2. Calculating a weighted average based on distance from the center point\n"
-                      "3. Applying exponential decay to weights (points further away have less influence)\n"
-                      "4. Using adaptive parameters based on local data characteristics\n\n"
-                      "This results in smoother data with reduced random fluctuations but preserved significant features."
-        }
-    
+
     # Tell me about my data
     if 'tell' in message_lower and 'data' in message_lower:
         stats = session_data.get('stats')
         if stats:
             message = f"Your data has {stats['rows']} rows and {stats['columns']} columns. "
-            
+
             if stats['numeric_columns']:
                 message += f"Numeric columns: {', '.join(stats['numeric_columns'][:5])}{'...' if len(stats['numeric_columns']) > 5 else ''}. "
-            
+
             if stats['categorical_columns']:
                 message += f"Categorical columns: {', '.join(stats['categorical_columns'][:5])}{'...' if len(stats['categorical_columns']) > 5 else ''}. "
-            
+
             if any(stats['missing_values'].values()):
                 missing = [f"{k}: {v}" for k, v in stats['missing_values'].items() if v > 0]
                 message += f"Missing values detected in columns: {', '.join(missing[:3])}{'...' if len(missing) > 3 else ''}."
             else:
                 message += "No missing values detected."
-            
+
             return {'message': message}
         else:
             return {'message': "Sorry, I don't have statistics about your data."}
-    
-    # Default response
+
+    # Default fallback
     return {
         'message': "I'm not sure how to help with that. You can ask me to show plots, explain the pipeline, or type 'Help' to see all options."
     }

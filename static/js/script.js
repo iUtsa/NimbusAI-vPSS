@@ -11,14 +11,17 @@ $(document).ready(function() {
     const vizContainer = $('#visualization-container');
     const vizContent = $('#visualization-content');
     const downloadBtn = $('#download-btn');
-    const toggleRawBtn = $('#toggle-raw-data');
     const rawDataContainer = $('#raw-data-container');
     const rawDataContent = $('#raw-data-content');
+    const toggleRawBtn = $('#toggle-raw-data');  // This one was missing or not defined
+
     
     // Variables
     let currentFile = null;
     let dataAnalyzed = false;
     let chatHistory = [];
+    let currentSessionId = null;
+
     
     // Add message to chat
     function addMessage(content, isUser = false) {
@@ -75,16 +78,16 @@ $(document).ready(function() {
             data: JSON.stringify({
                 message: message,
                 hasFile: !!currentFile,
-                fileProcessed: dataAnalyzed
+                fileProcessed: dataAnalyzed,
+                session_id: currentSessionId // ✅ Include this // ✅ Include this
+
             }),
             success: function(response) {
-                currentFile = file.name;
                 dataAnalyzed = true;
+                currentSessionId = response.session_id; // Save session ID
             
-                // Add success message
                 addMessage(response.message);
             
-                // Update visualization if available
                 if (response.visualization) {
                     updateVisualization(response.visualization);
                 }
@@ -92,11 +95,11 @@ $(document).ready(function() {
                 // Move upload form below the visualization and above chat input
                 $('.chat-input-container').before($('#file-upload-container'));
             
-                // Update raw data if available
                 if (response.rawData) {
                     updateRawData(response.rawData);
                 }
             }
+            
             ,
             error: function() {
                 removeTypingIndicator();
@@ -139,25 +142,32 @@ $(document).ready(function() {
     }
     
     // Update raw data display
-    function updateRawData(data) {
-        let formattedData = '';
-        
-        if (typeof data === 'string') {
-            formattedData = data;
-        } else if (Array.isArray(data)) {
-            formattedData = data.map(row => {
-                if (Array.isArray(row)) {
-                    return row.join(', ');
-                } else {
-                    return JSON.stringify(row);
-                }
-            }).join('\n');
-        } else {
-            formattedData = JSON.stringify(data, null, 2);
-        }
-        
-        rawDataContent.html(`<pre>${formattedData}</pre>`);
+    // Update the existing updateRawData function
+function updateRawData(data) {
+    // Make sure the container is initially visible
+    rawDataContainer.show();
+    
+    let formattedData = '';
+    
+    if (typeof data === 'string') {
+        formattedData = data;
+    } else if (Array.isArray(data)) {
+        formattedData = data.map(row => {
+            if (Array.isArray(row)) {
+                return row.join(', ');
+            } else {
+                return JSON.stringify(row);
+            }
+        }).join('\n');
+    } else {
+        formattedData = JSON.stringify(data, null, 2);
     }
+    
+    rawDataContent.html(`<pre>${formattedData}</pre>`);
+    
+    // Update the toggle button text
+    toggleRawBtn.text('Hide Raw Data');
+}
     
     // Handle file upload
     uploadForm.on('submit', function(e) {
@@ -224,19 +234,21 @@ $(document).ready(function() {
     });
     
     // Toggle raw data view
-    toggleRawBtn.on('click', function() {
-        rawDataContainer.toggle();
-        
-        const isVisible = rawDataContainer.is(':visible');
-        toggleRawBtn.text(isVisible ? 'Hide Raw Data' : 'Show Raw Data');
-        
-        // Scroll to raw data if visible
-        if (isVisible) {
-            $('html, body').animate({
-                scrollTop: rawDataContainer.offset().top - 20
-            }, 500);
-        }
-    });
+    // Modify the toggle raw data function
+// Use this as your toggle function for raw data
+toggleRawBtn.on('click', function() {
+    // Get direct reference to the DOM element
+    const rawContainer = document.getElementById('raw-data-container');
+    
+    // Toggle display directly on the DOM element
+    if (rawContainer.style.display === 'none' || rawContainer.style.display === '') {
+        rawContainer.style.display = 'block';
+        this.textContent = 'Hide Raw Data';
+    } else {
+        rawContainer.style.display = 'none';
+        this.textContent = 'Show Raw Data';
+    }
+});
     
     // Handle download button click
     downloadBtn.on('click', function() {
@@ -263,3 +275,40 @@ $(document).ready(function() {
     
     // Initial greeting message is already in the HTML
 });
+
+
+// Add this to your script.js file
+function checkRawData() {
+    if (currentSessionId) {
+        $.ajax({
+            url: '/api/chat',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                message: "show raw data",
+                hasFile: true,
+                fileProcessed: true,
+                session_id: currentSessionId
+            }),
+            success: function(response) {
+                console.log("Raw data response:", response);
+                // Check if we got any raw data
+                if (response.rawData) {
+                    console.log("Raw data received. First 100 chars:", 
+                        response.rawData.substring(0, 100));
+                    rawDataContent.html(`<pre>${response.rawData}</pre>`);
+                    rawDataContainer.css('display', 'block');
+                    console.log("Raw data container should now be visible");
+                } else {
+                    console.log("No raw data in response");
+                }
+            },
+            error: function(err) {
+                console.error("Error fetching raw data:", err);
+            }
+        });
+    } else {
+        console.log("No session ID available - can't fetch raw data");
+    }
+}
+
