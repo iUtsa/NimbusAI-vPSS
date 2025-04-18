@@ -13,15 +13,39 @@ $(document).ready(function() {
     const downloadBtn = $('#download-btn');
     const rawDataContainer = $('#raw-data-container');
     const rawDataContent = $('#raw-data-content');
-    const toggleRawBtn = $('#toggle-raw-data');  // This one was missing or not defined
-
+    const toggleRawBtn = $('#toggle-raw-data');
     
     // Variables
     let currentFile = null;
     let dataAnalyzed = false;
     let chatHistory = [];
     let currentSessionId = null;
-
+    
+    // Initialize - Check for existing session
+    checkSessionStatus();
+    
+    // Function to check if there's an active session
+    function checkSessionStatus() {
+        $.ajax({
+            url: '/api/session',
+            type: 'GET',
+            success: function(response) {
+                if (response.active && response.session_id) {
+                    currentSessionId = response.session_id;
+                    dataAnalyzed = response.file_processed;
+                    console.log("Active session detected: " + currentSessionId);
+                    
+                    // If we have an active session, add a message to inform the user
+                    if (dataAnalyzed) {
+                        addMessage("I detected you have data already processed. You can ask me to show you plots or explain the data.");
+                    }
+                }
+            },
+            error: function(error) {
+                console.error("Error checking session status:", error);
+            }
+        });
+    }
     
     // Add message to chat
     function addMessage(content, isUser = false) {
@@ -61,8 +85,8 @@ $(document).ready(function() {
         // Show typing indicator
         showTypingIndicator();
         
-        // If no file has been uploaded yet
-        if (!currentFile && !message.toLowerCase().includes('help')) {
+        // If no file has been uploaded yet and session is not active
+        if (!currentFile && !currentSessionId && !message.toLowerCase().includes('help')) {
             setTimeout(() => {
                 removeTypingIndicator();
                 addMessage("Please upload a CSV file first so I can analyze it. You can also ask for help if you need guidance.");
@@ -70,39 +94,56 @@ $(document).ready(function() {
             return;
         }
         
+        // Prepare data to send to server
+        const requestData = {
+            message: message,
+            hasFile: !!currentFile || !!currentSessionId, // Either we have a file or an active session
+            fileProcessed: dataAnalyzed
+        };
+        
+        // Always include session ID if we have one
+        if (currentSessionId) {
+            requestData.session_id = currentSessionId;
+            console.log("Sending request with session ID: " + currentSessionId);
+        }
+        
         // Send message to server for processing
         $.ajax({
             url: '/api/chat',
             type: 'POST',
             contentType: 'application/json',
-            data: JSON.stringify({
-                message: message,
-                hasFile: !!currentFile,
-                fileProcessed: dataAnalyzed,
-                session_id: currentSessionId // ✅ Include this // ✅ Include this
-
-            }),
+            data: JSON.stringify(requestData),
             success: function(response) {
+                removeTypingIndicator();
+                
+                // Update session ID if provided in response
+                if (response.session_id) {
+                    currentSessionId = response.session_id;
+                    console.log("Session ID updated to: " + currentSessionId);
+                }
+                
+                // Mark data as analyzed if we got a successful response
                 dataAnalyzed = true;
-                currentSessionId = response.session_id; // Save session ID
-            
+                
+                // Add bot response to chat
                 addMessage(response.message);
-            
+                
+                // Update visualization if available
                 if (response.visualization) {
                     updateVisualization(response.visualization);
                 }
-            
-                // Move upload form below the visualization and above chat input
+                
+                // Move upload form below visualization if needed
                 $('.chat-input-container').before($('#file-upload-container'));
-            
+                
+                // Update raw data if available
                 if (response.rawData) {
                     updateRawData(response.rawData);
                 }
-            }
-            
-            ,
-            error: function() {
+            },
+            error: function(error) {
                 removeTypingIndicator();
+                console.error("Error processing message:", error);
                 addMessage("Sorry, I encountered an error processing your request. Please try again.");
             }
         });
@@ -132,8 +173,12 @@ $(document).ready(function() {
         
         // If vizData is an image URL
         if (vizData.type === 'image') {
-            vizContent.html(`<img src="${vizData.url}" alt="Data Visualization">`);
+            // Add session ID and timestamp to prevent browser caching
+            const timestamp = new Date().getTime();
+            const urlWithParams = `${vizData.url}?sid=${currentSessionId}&t=${timestamp}`;
+            vizContent.html(`<img src="${urlWithParams}" alt="Data Visualization">`);
             downloadBtn.attr('data-src', vizData.url);
+            console.log("Updated visualization with URL: " + urlWithParams);
         }
         // If vizData is HTML/SVG content
         else if (vizData.type === 'html') {
@@ -142,32 +187,31 @@ $(document).ready(function() {
     }
     
     // Update raw data display
-    // Update the existing updateRawData function
-function updateRawData(data) {
-    // Make sure the container is initially visible
-    rawDataContainer.show();
-    
-    let formattedData = '';
-    
-    if (typeof data === 'string') {
-        formattedData = data;
-    } else if (Array.isArray(data)) {
-        formattedData = data.map(row => {
-            if (Array.isArray(row)) {
-                return row.join(', ');
-            } else {
-                return JSON.stringify(row);
-            }
-        }).join('\n');
-    } else {
-        formattedData = JSON.stringify(data, null, 2);
+    function updateRawData(data) {
+        // Make sure the container is initially visible
+        rawDataContainer.show();
+        
+        let formattedData = '';
+        
+        if (typeof data === 'string') {
+            formattedData = data;
+        } else if (Array.isArray(data)) {
+            formattedData = data.map(row => {
+                if (Array.isArray(row)) {
+                    return row.join(', ');
+                } else {
+                    return JSON.stringify(row);
+                }
+            }).join('\n');
+        } else {
+            formattedData = JSON.stringify(data, null, 2);
+        }
+        
+        rawDataContent.html(`<pre>${formattedData}</pre>`);
+        
+        // Update the toggle button text
+        toggleRawBtn.text('Hide Raw Data');
     }
-    
-    rawDataContent.html(`<pre>${formattedData}</pre>`);
-    
-    // Update the toggle button text
-    toggleRawBtn.text('Hide Raw Data');
-}
     
     // Handle file upload
     uploadForm.on('submit', function(e) {
@@ -203,6 +247,12 @@ function updateRawData(data) {
                 currentFile = file.name;
                 dataAnalyzed = true;
                 
+                // Save session ID from response
+                if (response.session_id) {
+                    currentSessionId = response.session_id;
+                    console.log("New session created: " + currentSessionId);
+                }
+                
                 // Add success message
                 addMessage(response.message);
                 
@@ -216,7 +266,8 @@ function updateRawData(data) {
                     updateRawData(response.rawData);
                 }
             },
-            error: function() {
+            error: function(error) {
+                console.error("Error uploading file:", error);
                 addMessage("Sorry, I encountered an error analyzing your file. Please try again or try a different CSV file.");
             }
         });
@@ -234,28 +285,31 @@ function updateRawData(data) {
     });
     
     // Toggle raw data view
-    // Modify the toggle raw data function
-// Use this as your toggle function for raw data
-toggleRawBtn.on('click', function() {
-    // Get direct reference to the DOM element
-    const rawContainer = document.getElementById('raw-data-container');
-    
-    // Toggle display directly on the DOM element
-    if (rawContainer.style.display === 'none' || rawContainer.style.display === '') {
-        rawContainer.style.display = 'block';
-        this.textContent = 'Hide Raw Data';
-    } else {
-        rawContainer.style.display = 'none';
-        this.textContent = 'Show Raw Data';
-    }
-});
+    toggleRawBtn.on('click', function() {
+        // Get direct reference to the DOM element
+        const rawContainer = document.getElementById('raw-data-container');
+        
+        // Toggle display directly on the DOM element
+        if (rawContainer.style.display === 'none' || rawContainer.style.display === '') {
+            rawContainer.style.display = 'block';
+            this.textContent = 'Hide Raw Data';
+        } else {
+            rawContainer.style.display = 'none';
+            this.textContent = 'Show Raw Data';
+        }
+    });
     
     // Handle download button click
     downloadBtn.on('click', function() {
         const imgSrc = $(this).attr('data-src');
         if (imgSrc) {
+            // Add session ID to download URL to ensure correct image
+            const downloadUrl = imgSrc.includes('?') 
+                ? imgSrc + `&sid=${currentSessionId}` 
+                : imgSrc + `?sid=${currentSessionId}`;
+                
             const link = document.createElement('a');
-            link.href = imgSrc;
+            link.href = downloadUrl;
             link.download = 'nimbus_visualization.png';
             document.body.appendChild(link);
             link.click();
@@ -276,8 +330,7 @@ toggleRawBtn.on('click', function() {
     // Initial greeting message is already in the HTML
 });
 
-
-// Add this to your script.js file
+// Function to check raw data
 function checkRawData() {
     if (currentSessionId) {
         $.ajax({
@@ -296,8 +349,8 @@ function checkRawData() {
                 if (response.rawData) {
                     console.log("Raw data received. First 100 chars:", 
                         response.rawData.substring(0, 100));
-                    rawDataContent.html(`<pre>${response.rawData}</pre>`);
-                    rawDataContainer.css('display', 'block');
+                    $('#raw-data-content').html(`<pre>${response.rawData}</pre>`);
+                    $('#raw-data-container').css('display', 'block');
                     console.log("Raw data container should now be visible");
                 } else {
                     console.log("No raw data in response");
@@ -311,4 +364,3 @@ function checkRawData() {
         console.log("No session ID available - can't fetch raw data");
     }
 }
-

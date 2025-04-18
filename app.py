@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, session
 import os
 import pandas as pd
 import tempfile
@@ -10,7 +10,6 @@ from werkzeug.utils import secure_filename
 import time
 
 start = time.time()
-
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -24,6 +23,8 @@ app.config['JAVA_BIN'] = 'java'  # Update this to your Java path if needed
 app.config['TEMP_DIR'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp')
 app.config['VISUALIZATIONS_DIR'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
                                                'static', 'visualizations')
+# Set a secret key for session management
+app.secret_key = os.environ.get('SECRET_KEY', 'nimbus_ai_dev_key_change_in_production')
 
 # Create directories if they don't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -59,8 +60,6 @@ def process_csv_with_java(file_path, session_id):
             output_dir,
             output_data
         ]
-
-
         
         logger.info(f"Running Java command: {' '.join(cmd)}")
         
@@ -117,6 +116,9 @@ def analyze_csv(file_path):
 def get_bot_response(message, session_data):
     """Generate a response from the chatbot based on user message and session data"""
     message_lower = message.lower()
+    session_id = session_data.get('session_id')
+    
+    logger.info(f"Processing message for session {session_id}: '{message}'")
 
     if not session_data.get('file_processed'):
         return {
@@ -163,42 +165,46 @@ def get_bot_response(message, session_data):
         }
 
     # Show initial plot
-    if 'initial' in message_lower and ('plot' in message_lower or 'show' in message_lower):
+    if 'initial' in message_lower and ('plot' in message_lower or 'show' in message_lower or 'data' in message_lower):
+        logger.info(f"Serving initial plot for session {session_id}")
         return {
             'message': "Here's the initial plot of your raw data:",
             'visualization': {
                 'type': 'image',
-                'url': f"/visualizations/{session_data['session_id']}/initial_plot.png"
+                'url': f"/visualizations/{session_id}/initial_plot.png"
             }
         }
 
-    # Show salted plot
-    if 'salted' in message_lower and ('plot' in message_lower or 'show' in message_lower):
+    # Show salted plot or data
+    if 'salted' in message_lower and ('plot' in message_lower or 'show' in message_lower or 'data' in message_lower):
+        logger.info(f"Serving salted plot for session {session_id}")
         return {
             'message': "Here's the plot after applying the salting procedure:",
             'visualization': {
                 'type': 'image',
-                'url': f"/visualizations/{session_data['session_id']}/salted_plot.png"
+                'url': f"/visualizations/{session_id}/salted_plot.png"
             }
         }
 
-    # Show smoothed plot
-    if 'smoothed' in message_lower and ('plot' in message_lower or 'show' in message_lower):
+    # Show smoothed plot or data
+    if 'smoothed' in message_lower and ('plot' in message_lower or 'show' in message_lower or 'data' in message_lower):
+        logger.info(f"Serving smoothed plot for session {session_id}")
         return {
             'message': "Here's the plot after applying the smoothing algorithm:",
             'visualization': {
                 'type': 'image',
-                'url': f"/visualizations/{session_data['session_id']}/smoothed_plot.png"
+                'url': f"/visualizations/{session_id}/smoothed_plot.png"
             }
         }
 
     # Show final graph
     if 'final' in message_lower or ('all' in message_lower and 'plot' in message_lower) or 'graph' in message_lower:
+        logger.info(f"Serving final graph for session {session_id}")
         return {
             'message': "Here's the final graph showing original, salted, and smoothed data:",
             'visualization': {
                 'type': 'image',
-                'url': f"/visualizations/{session_data['session_id']}/final_plot.png"
+                'url': f"/visualizations/{session_id}/final_plot.png"
             }
         }
 
@@ -224,8 +230,7 @@ def get_bot_response(message, session_data):
         else:
             return {'message': "Sorry, I couldn't retrieve the processed data."}
         
-
-       # Explain the dataset with statistical summary
+    # Explain the dataset with statistical summary
     if 'explain' in message_lower and ('data' in message_lower or 'dataset' in message_lower):
         stats = session_data.get('stats')
         if stats:
@@ -258,20 +263,20 @@ def get_bot_response(message, session_data):
             else:
                 message += "- No missing values detected.\n"
 
-        # Convert summary to DataFrame and return as text
+            # Convert summary to DataFrame and return as text
             try:
                 summary_df = pd.DataFrame(stats['summary'])
                 describe_text = summary_df.to_string()
                 return {
-                    'message': message + "\nHere’s the statistical summary of numeric columns:",
+                    'message': message + "\nHere's the statistical summary of numeric columns:",
                     'rawData': describe_text
-            }
+                }
             except Exception as e:
+                logger.error(f"Error formatting summary data: {str(e)}")
                 return {'message': message + "\nSummary data could not be formatted."}
         else:
             return {'message': "Sorry, I couldn't retrieve stats from your data."}
     
-
     # Tell me about my data
     if 'tell' in message_lower and 'data' in message_lower:
         stats = session_data.get('stats')
@@ -317,17 +322,25 @@ def upload_file():
         return jsonify({'error': 'No selected file'}), 400
     
     if file and allowed_file(file.filename):
+        # Generate a new session ID
         session_id = str(uuid.uuid4())
+        
+        # Store session ID in the user's Flask session
+        session['session_id'] = session_id
+        logger.info(f"Created new session: {session_id}")
+        
         filename = secure_filename(file.filename)
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{session_id}_{filename}")
         
         # Save the file
         file.save(file_path)
+        logger.info(f"Saved file: {file_path}")
         
         # Analyze the CSV
         df, stats, error = analyze_csv(file_path)
         
         if error:
+            logger.error(f"Error analyzing CSV: {error}")
             return jsonify({
                 'error': f'Error analyzing CSV: {error}'
             }), 400
@@ -336,6 +349,7 @@ def upload_file():
         visualizations, processed_df, java_error = process_csv_with_java(file_path, session_id)
         
         if java_error:
+            logger.error(f"Error processing with Java: {java_error}")
             return jsonify({
                 'error': f'Error processing with Java: {java_error}'
             }), 400
@@ -350,6 +364,8 @@ def upload_file():
             'stats': stats,
             'file_processed': True
         }
+        
+        logger.info(f"Successfully processed file for session {session_id}")
         
         # Return success with visualization
         return jsonify({
@@ -372,34 +388,65 @@ def chat():
     message = data.get('message', '')
     session_id = data.get('session_id')
     
-    # If no session ID is provided but a file was processed
-    if not session_id and data.get('hasFile') and data.get('fileProcessed'):
-        # Use the first available session
-        if sessions:
-            session_id = list(sessions.keys())[0]
+    # Log the incoming request
+    logger.info(f"Chat request received with session_id: {session_id}")
     
-    # Check if session exists
+    # If no session ID is provided from the request, try to get it from the Flask session
+    if not session_id:
+        session_id = session.get('session_id')
+        logger.info(f"Using session ID from Flask session: {session_id}")
+    
+    # Look for the session in our sessions dictionary
     if session_id and session_id in sessions:
+        logger.info(f"Processing chat with session: {session_id}")
         response = get_bot_response(message, sessions[session_id])
     else:
+        logger.warning(f"No valid session found for ID: {session_id}")
         response = {
             'message': "Please upload a CSV file first so I can analyze it."
         }
-    response['session_id'] = session_id  # ✅ attach the session_id again
+    
+    # Always include the session_id in the response
+    response['session_id'] = session_id
+    
+    # Add debug info to response in development mode
+    if app.debug:
+        response['_debug'] = {
+            'session_exists': session_id in sessions if session_id else False,
+            'available_sessions': list(sessions.keys()),
+            'timestamp': time.time()
+        }
+    
     return jsonify(response)
 
 @app.route('/visualizations/<session_id>/<filename>')
 def get_visualization(session_id, filename):
     """Serve visualization images"""
+    # Check if this is a valid session
+    if session_id not in sessions:
+        logger.warning(f"Attempt to access invalid session: {session_id}")
+        return 'Session not found', 404
+        
     file_path = os.path.join(app.config['VISUALIZATIONS_DIR'], session_id, filename)
     if os.path.exists(file_path):
-        return send_file(file_path, mimetype='image/png')
+        logger.info(f"Serving visualization: {file_path}")
+        # Set no-cache headers to prevent browser caching
+        response = send_file(file_path, mimetype='image/png')
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
     else:
+        logger.warning(f"Visualization not found: {file_path}")
         return 'Visualization not found', 404
 
 @app.route('/api/download/<session_id>/<plot_type>')
 def download_plot(session_id, plot_type):
     """Download a plot image"""
+    if session_id not in sessions:
+        logger.warning(f"Attempt to download from invalid session: {session_id}")
+        return 'Session not found', 404
+        
     if session_id in sessions and sessions[session_id].get('visualizations'):
         visualizations = sessions[session_id]['visualizations']
         
@@ -437,6 +484,10 @@ def download_plot(session_id, plot_type):
 @app.route('/api/download/<session_id>/processed_data')
 def download_processed_data(session_id):
     """Download the processed data as CSV"""
+    if session_id not in sessions:
+        logger.warning(f"Attempt to download data from invalid session: {session_id}")
+        return 'Session not found', 404
+        
     if session_id in sessions and sessions[session_id].get('processed_data') is not None:
         # Create a temporary file
         fd, temp_path = tempfile.mkstemp(suffix='.csv')
@@ -456,6 +507,41 @@ def download_processed_data(session_id):
             os.close(fd)
     else:
         return 'Processed data not found', 404
+
+@app.route('/api/session', methods=['GET'])
+def get_session():
+    """Get current session information"""
+    session_id = session.get('session_id')
+    
+    if session_id and session_id in sessions:
+        logger.info(f"Session check: Active session {session_id}")
+        return jsonify({
+            'active': True,
+            'session_id': session_id,
+            'file_processed': sessions[session_id].get('file_processed', False)
+        })
+    else:
+        logger.info("Session check: No active session")
+        return jsonify({
+            'active': False,
+            'session_id': None,
+            'file_processed': False
+        })
+
+@app.route('/api/clear_session', methods=['POST'])
+def clear_session():
+    """Clear the current session (useful for testing)"""
+    session_id = session.get('session_id')
+    
+    if session_id and session_id in sessions:
+        # Remove from sessions dictionary
+        del sessions[session_id]
+        # Clear Flask session
+        session.pop('session_id', None)
+        logger.info(f"Cleared session: {session_id}")
+        return jsonify({'success': True, 'message': f"Session {session_id} cleared"})
+    
+    return jsonify({'success': False, 'message': "No active session to clear"})
 
 if __name__ == '__main__':
     app.run(debug=True)
